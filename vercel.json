@@ -1,5 +1,7 @@
 {
   "version": 2,
+  "installCommand": "npm install --prefix frontend-pwa",
+  "buildCommand": "npm run build --prefix frontend-pwa",
   "builds": [
     {
       "src": "frontend-pwa/package.json",
