@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import openai
 from langdetect import detect
 from .ml_engine import analyze_vitals
-from .services.ocr_service import extract_text_from_image
+from .services.ocr_service import extract_text_from_image, parse_medical_text
 from .services.voice_service import stream_tts
 from . import llm_client
 from .schemas import OCRParseResult, TriageResponse
@@ -68,16 +68,17 @@ def create_app():
       tmp_path = tmp.name
     try:
       raw = extract_text_from_image(tmp_path)
-      # send raw to LLM for NER parsing via Edge Router
+      auto_fill = parse_medical_text(raw)['auto_fill']
       prompt = f"Extract medications, dosages, diagnoses, and lab results from the following medical text. Return ONLY valid JSON matching this schema: {OCRParseResult.schema_json()}\n\nText:\n{raw}"
       try:
         parsed = await llm_client.call_edge_router(prompt)
-        # validate
         result = OCRParseResult(**parsed, raw_text=raw)
-        return result.dict()
+        payload = result.dict()
+        payload['auto_fill'] = auto_fill
+        return payload
       except Exception as e:
         logger.exception('OCR parsing failed')
-        return JSONResponse({'error': 'Failed to parse OCR text', 'detail': str(e), 'raw_text': raw}, status_code=500)
+        return JSONResponse({'error': 'Failed to parse OCR text', 'detail': str(e), 'raw_text': raw, 'auto_fill': auto_fill}, status_code=500)
     except Exception as e:
       return JSONResponse({'error': str(e)}, status_code=500)
 
@@ -129,6 +130,47 @@ def create_app():
     data = await payload.json()
     result = analyze_vitals(data)
     return result
+
+  @app.post('/api/chat')
+  async def chat_endpoint(payload: Request):
+    data = await payload.json()
+    messages = data.get('messages')
+    vitals_context = data.get('vitals', {})
+    triage_context = data.get('triage', {})
+
+    if not messages or not isinstance(messages, list):
+      return JSONResponse({'error': 'messages list is required'}, status_code=400)
+
+    def render_context():
+      lines = [
+        'Patient vitals data:',
+        f"Blood Pressure: {vitals_context.get('bp', 'unknown')}",
+        f"Heart Rate: {vitals_context.get('hr', 'unknown')}",
+        f"Temperature: {vitals_context.get('temp', 'unknown')}",
+        f"SpO2: {vitals_context.get('spo2', 'unknown')}",
+        f"Blood Glucose: {vitals_context.get('glucose', 'unknown')}",
+        '',
+        f"Current triage severity: {triage_context.get('triage_severity', 'unknown')}",
+        f"Clinical reasoning: {triage_context.get('clinical_reasoning', 'unknown')}",
+        '',
+        'Answer as NEXORA, a medical AI expert. Provide patient-specific medical advice, speak in the user language, and do not invent findings.'
+      ]
+      return '\n'.join(lines)
+
+    system_prompt = (
+      'You are NEXORA, a highly qualified medical consultant for rural healthcare workers. '
+      'Silently use the patient vitals and triage context to answer the user question with clinical caution. '
+      'If the user asks in Bengali, reply in Bengali. If the user asks in English, reply in English. '
+      'Always stay concise, factual, and supportive.'
+      f"\n\n{render_context()}"
+    )
+    try:
+      text = await llm_client.call_edge_router(messages=[{'role':'system','content': system_prompt}, *messages], response_mode='raw', temperature=0.6, max_tokens=900, api_key=data.get('api_key'))
+      language = 'bn' if any('উ' in c or 'ক' in c or 'া' in c for c in text) else 'en'
+      return {'assistant': text, 'language': language}
+    except Exception as e:
+      logger.exception('Chat gateway failed')
+      return JSONResponse({'error': 'NEXORA chat failed', 'detail': str(e)}, status_code=500)
 
   @app.get('/api/tts/stream')
   async def tts_stream(q: str = 'Summary not provided'):
