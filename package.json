@@ -1,4 +1,9 @@
 {
+  "name": "rural-health-triage",
+  "private": true,
+  "scripts": {
+    "build:frontend": "npm install --prefix frontend-pwa && npm run build --prefix frontend-pwa"
+  },
   "dependencies": {
     "wrangler": "^4.98.0"
   }
