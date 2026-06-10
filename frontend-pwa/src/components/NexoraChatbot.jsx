@@ -79,7 +79,7 @@ export default function NexoraChatbot({ vitals, triage }) {
   const language = detectLanguageFromText(messages[messages.length - 1]?.content || '')
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-50 sm:relative sm:bottom-auto sm:z-auto">
+    <div className="relative w-full sm:relative sm:bottom-auto sm:z-auto">
       <div className="glass-card border border-white/10 bg-slate-950/90 shadow-soft-glow shadow-lg p-4 rounded-3xl max-w-full sm:max-w-none">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
