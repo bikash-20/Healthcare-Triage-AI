@@ -50,8 +50,8 @@ async def stream_openai_tts(text: str, model: str = OPENAI_TTS_MODEL):
       async for chunk in resp.aiter_bytes():
         yield chunk
 
-async def stream_elevenlabs_tts(text: str, voice_id: str = 'eleven_monolingual_v1'):
-  last_exc = None
+  async def stream_tts(text: str, voice_id: str = os.getenv('ELEVENLABS_VOICE_ID', '21m00Tcm4TlvDq8ikWAM')):
+   last_exc = None
   for key in ELEVENLABS_KEYS:
     if not key:
       continue
