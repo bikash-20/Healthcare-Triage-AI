@@ -6,6 +6,7 @@ import GlassCard from './components/GlassCard'
 import TriageCard from './components/TriageCard'
 import AudioPlayer from './components/AudioPlayer'
 import NexoraChatbot from './components/NexoraChatbot'
+import DoseCalculator from './components/DoseCalculator'
 
 export default function App() {
   const [triage, setTriage] = useState(null)
@@ -52,6 +53,8 @@ export default function App() {
             <div className="space-y-4">
               <AudioIntake vitals={vitals} onTriageUpdate={setTriage} />
               <TriageCard triage={triage} />
+              {/* ✅ NEW: Dose Calculator added here */}
+              <DoseCalculator />
               <AudioPlayer
                 src="/api/tts/stream"
                 summary={triage ? `Triage status: ${triage.triage_severity}. ${triage.clinical_reasoning || ''}` : 'No triage data available'}

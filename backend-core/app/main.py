@@ -124,7 +124,43 @@ def create_app():
     except Exception as e:
       logger.exception('Triage LLM call failed')
       return JSONResponse({'error': 'Triage generation failed', 'detail': str(e)}, status_code=500)
+  @app.post('/api/dose')
+  async def dose_endpoint(payload: Request):
+    data = await payload.json()
+    medication = data.get('medication')
+    age = data.get('age')
+    weight = data.get('weight')
 
+    if not medication or age is None or weight is None:
+        return JSONResponse({'error': 'medication, age, and weight are required'}, status_code=400)
+
+    prompt = (
+        "You are a clinical pharmacist AI for rural health workers in Bangladesh. "
+        "Calculate the safe medication dose based on patient age and weight. "
+        "Return ONLY valid JSON with these exact fields:\n"
+        "{\n"
+        '  "summary_en": "Full dose instructions in English",\n'
+        '  "summary_bn": "Full dose instructions in Bengali",\n'
+        '  "dose_per_kg": "e.g. 15mg/kg",\n'
+        '  "total_dose": "e.g. 300mg",\n'
+        '  "frequency": "e.g. Every 6 hours",\n'
+        '  "route": "e.g. Oral",\n'
+        '  "is_dangerous": true or false,\n'
+        '  "warning_en": "Warning in English if dangerous, else null",\n'
+        '  "warning_bn": "Warning in Bengali if dangerous, else null"\n'
+        "}\n\n"
+        f"Medication: {medication}\n"
+        f"Patient age: {age} years\n"
+        f"Patient weight: {weight} kg\n\n"
+        "Important: If the dose is unsafe for this age/weight, set is_dangerous to true and explain why in both languages. Return only JSON."
+    )
+
+    try:
+        parsed = await llm_client.call_edge_router(prompt, temperature=0.0, max_tokens=600)
+        return parsed
+    except Exception as e:
+        logger.exception('Dose calculation failed')
+        return JSONResponse({'error': 'Dose calculation failed', 'detail': str(e)}, status_code=500)
   @app.post('/api/vitals')
   async def vitals_endpoint(payload: Request):
     data = await payload.json()
