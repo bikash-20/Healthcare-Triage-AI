@@ -6,41 +6,41 @@ Codex Community HACKATHON
 
 In association with Codex and Poridhi
 
-## 🏥 Project Overview
+##  Project Overview
 
 A production-ready **AI-powered healthcare triage assistant** designed for community health workers (CHWs) in Bangladesh. The system enables rapid patient intake, clinical decision support, and specialist referral guidance using voice, OCR, and advanced machine learning.
 
-**Status:** ✅ **ALL HACKATHON REQUIREMENTS COMPLETE** + Enhanced Features
+**Status:** **ALL HACKATHON REQUIREMENTS COMPLETE** + Enhanced Features
 
 ---
 
-## 🎯 Hackathon Tasks — Complete Checklist
+##  Hackathon Tasks — Complete Checklist
 
 | Task | Description | Status | Implementation |
 |------|-------------|--------|-----------------|
-| **1** | Multilingual Voice Intake (Bengali/English) | ✅ | MediaRecorder API → OpenAI Whisper → Google Translate |
-| **2** | OCR Prescription Digitization | ✅ | Google Cloud Vision → LLM NER → Structured JSON |
-| **3** | AI Symptom Analysis & Triage Scoring | ✅ | LLM (GPT-4o-mini) + Medical Prompt → Green/Yellow/Red/Black |
-| **4** | Anomaly Detection in Vitals | ✅ | Z-score + Emergency Rules → Alert Levels |
-| **5** | Voice Response & Report Generation | ✅ | ElevenLabs TTS Streaming + jsPDF |
+| **1** | Multilingual Voice Intake (Bengali/English) |  | MediaRecorder API → OpenAI Whisper → Google Translate |
+| **2** | OCR Prescription Digitization |  | Google Cloud Vision → LLM NER → Structured JSON |
+| **3** | AI Symptom Analysis & Triage Scoring |  | LLM (GPT-4o-mini) + Medical Prompt → Green/Yellow/Red/Black |
+| **4** | Anomaly Detection in Vitals |  | Z-score + Emergency Rules → Alert Levels |
+| **5** | Voice Response & Report Generation |  | ElevenLabs TTS Streaming + jsPDF |
 
 ---
 
-## 🚀 Advanced Features (Beyond Requirements)
+##  Advanced Features (Beyond Requirements)
 
-- ✅ **Progressive Web App (PWA)** - Installable on mobile/desktop/iOS
-- ✅ **Offline-First Architecture** - Service worker caching
-- ✅ **Intelligent LLM Routing** - Free tier fallback, paid key support
-- ✅ **API Key Rotation** - Multi-account ElevenLabs support
-- ✅ **Glassmorphism UI** - Modern frosted glass design language
-- ✅ **Full Responsive Design** - 320px mobile → 4K desktop
-- ✅ **Production Logging** - Structured error handling throughout
-- ✅ **Comprehensive Testing** - 3 passing async integration tests
-- ✅ **PWA Install Banner** - Context-aware installation prompts
+-  **Progressive Web App (PWA)** - Installable on mobile/desktop/iOS
+-  **Offline-First Architecture** - Service worker caching
+-  **Intelligent LLM Routing** - Free tier fallback, paid key support
+-  **API Key Rotation** - Multi-account ElevenLabs support
+-  **Glassmorphism UI** - Modern frosted glass design language
+-  **Full Responsive Design** - 320px mobile → 4K desktop
+-  **Production Logging** - Structured error handling throughout
+-  **Comprehensive Testing** - 3 passing async integration tests
+-  **PWA Install Banner** - Context-aware installation prompts
 
 ---
 
-## 📂 Repository Structure
+##  Repository Structure
 
 ```
 rural-health-triage/
@@ -70,7 +70,7 @@ rural-health-triage/
 
 ---
 
-## 🏃 Quick Start (2 minutes)
+##  Quick Start (2 minutes)
 
 ### Prerequisites
 - macOS/Linux terminal
@@ -99,7 +99,7 @@ npm run dev
 
 ---
 
-## 📖 Feature Walkthrough
+##  Feature Walkthrough
 
 ### **1. Voice Patient Intake**
 - Click "Start Recording" in right panel
@@ -136,7 +136,7 @@ npm run dev
 
 ---
 
-## 🔑 API Key Configuration
+##  API Key Configuration
 
 ### For Hackathon (Free Tier Demo)
 The project is pre-configured to work with:
@@ -162,7 +162,7 @@ EDGE_ROUTER_URL=https://your-cloudflare-worker.example.com
 
 ---
 
-## 🧪 Testing
+##  Testing
 
 ### Run Backend Tests
 ```bash
@@ -185,20 +185,20 @@ curl http://localhost:8000/api/tts/stream?q=Hello%20world -o audio.mp3
 
 ---
 
-## 📱 Device Support
+##  Device Support
 
 | Device | Browser | Support | Installation |
 |--------|---------|---------|--------------|
-| **iPhone/iPad** | Safari 14+ | ✅ Full PWA | Share → Add to Home |
-| **Android Phone** | Chrome 90+ | ✅ Full PWA | Install button |
-| **Android Phone** | Firefox 90+ | ✅ Full PWA | Add to Home |
-| **Windows/Mac** | Chrome 88+ | ✅ Full PWA | Install button |
-| **Windows/Mac** | Edge 88+ | ✅ Full PWA | Install button |
-| **Linux** | Chrome 88+ | ✅ Full PWA | Install button |
+| **iPhone/iPad** | Safari 14+ |  Full PWA | Share → Add to Home |
+| **Android Phone** | Chrome 90+ |  Full PWA | Install button |
+| **Android Phone** | Firefox 90+ |  Full PWA | Add to Home |
+| **Windows/Mac** | Chrome 88+ |  Full PWA | Install button |
+| **Windows/Mac** | Edge 88+ |  Full PWA | Install button |
+| **Linux** | Chrome 88+ |  Full PWA | Install button |
 
 ---
 
-## 🎨 UI/UX Highlights
+##  UI/UX Highlights
 
 ### **Glassmorphism Design**
 - Frosted glass panels (`backdrop-blur-md`, `bg-white/10`)
@@ -219,7 +219,7 @@ curl http://localhost:8000/api/tts/stream?q=Hello%20world -o audio.mp3
 
 ---
 
-## 🔧 Architecture Highlights
+##  Architecture Highlights
 
 ### **Frontend (Vite + React)**
 - Component-based architecture
@@ -244,7 +244,7 @@ curl http://localhost:8000/api/tts/stream?q=Hello%20world -o audio.mp3
 
 ---
 
-## 🏆 Hackathon Advantages
+##  Hackathon Advantages
 
 1. **Complete Feature Coverage** - All 5 tasks + 7 enhancements
 2. **Production Quality** - Type-safe, tested, logged, error-handled
@@ -255,7 +255,7 @@ curl http://localhost:8000/api/tts/stream?q=Hello%20world -o audio.mp3
 
 ---
 
-## 📊 Performance Metrics
+##  Performance Metrics
 
 - **Frontend Build:** 1.33s
 - **Frontend Size:** 611 KB (201 KB gzipped)
@@ -266,7 +266,7 @@ curl http://localhost:8000/api/tts/stream?q=Hello%20world -o audio.mp3
 
 ---
 
-## 📚 Documentation Files
+##  Documentation Files
 
 - **[PROJECT_COMPLETION.md](PROJECT_COMPLETION.md)** - Detailed task checklist & features
 - **[QUICK_START.md](QUICK_START.md)** - 60-second judge verification guide
@@ -274,7 +274,7 @@ curl http://localhost:8000/api/tts/stream?q=Hello%20world -o audio.mp3
 
 ---
 
-## 🤝 Support & Questions
+##  Support & Questions
 
 **For judges/evaluators:**
 1. Check [QUICK_START.md](QUICK_START.md) for verification steps
@@ -290,7 +290,7 @@ curl http://localhost:8000/api/tts/stream?q=Hello%20world -o audio.mp3
 
 ---
 
-## 🎓 Learning Resources (Built With)
+##  Learning Resources (Built With)
 
 - **FastAPI** - Modern Python web framework
 - **Vite** - Next-generation frontend build tool
@@ -305,20 +305,20 @@ curl http://localhost:8000/api/tts/stream?q=Hello%20world -o audio.mp3
 
 ---
 
-## ✨ Final Notes
+##  Final Notes
 
 This project demonstrates full-stack competency across:
-- ✅ AI/ML integration (LLM prompting, anomaly detection)
-- ✅ API orchestration (multi-provider routing, fallback logic)
-- ✅ Frontend excellence (responsive PWA, modern design)
-- ✅ Backend architecture (async, type-safe, production-grade)
-- ✅ Real-world problem solving (Bangladesh healthcare context)
+-  AI/ML integration (LLM prompting, anomaly detection)
+-  API orchestration (multi-provider routing, fallback logic)
+-  Frontend excellence (responsive PWA, modern design)
+-  Backend architecture (async, type-safe, production-grade)
+-  Real-world problem solving (Bangladesh healthcare context)
 
 **Ready for hackathon submission. Let's win! 🚀**
 
 ---
 
 **Last Updated:** June 9, 2026  
-**Project Status:** Production Ready ✅  
-**Hackathon Tasks:** 5/5 Complete ✅  
-**Enhancements:** 7+ Features Beyond Requirements ✅
+**Project Status:** Production Ready   
+**Hackathon Tasks:** 5/5 Complete   
+**Enhancements:** 7+ Features Beyond Requirements 
