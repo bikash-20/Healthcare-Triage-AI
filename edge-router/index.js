@@ -24,14 +24,15 @@ const TTS_MODEL = '@cf/myshell-ai/melotts'
 const CF_MODEL_ALIASES = {
   'cf-claude': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
   'cf-llama': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-  'cf-qwen': '@cf/meta/llama-3.1-8b-instruct',
+  'cf-qwen': '@cf/qwen/qwen2.5-coder-32b-instruct',
   'cf-gemma': '@cf/google/gemma-3-12b-it',
   'cf-mistral': '@cf/mistral/mistral-7b-instruct-v0.2',
   'cf-deepseek': '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
 }
-const DEFAULT_CF_MODEL = '@cf/meta/llama-3.1-8b-instruct'
-const CF_AI_MODELS_DEFAULT = '@cf/meta/llama-3.1-8b-instruct'
-const OPENROUTER_MODELS_DEFAULT = 'meta-llama/llama-3.1-8b-instruct:free'
+const DEFAULT_CF_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+const CF_AI_MODELS_DEFAULT = '@cf/meta/llama-3.3-70b-instruct-fp8-fast,@cf/google/gemma-3-12b-it,@cf/qwen/qwen2.5-coder-32b-instruct'
+const OPENROUTER_MODELS_DEFAULT =
+  'qwen/qwen-2.5-32b-instruct:free,google/gemma-3-27b-it:free,meta-llama/llama-3.3-70b-instruct:free'
 
 function envArray(value, fallback) {
   if (!value) return fallback.split(',').map((s) => s.trim()).filter(Boolean)
