@@ -1,12 +1,12 @@
 # Rural Health Triage — bKash presents SUST CSE
-live link : https://rural-health-triage-nine.vercel.app/
-<img width="1280" height="761" alt="image" src="https://github.com/user-attachments/assets/5462e587-a846-4e3d-a4be-0afc60b42a54" />
-
 CARNIVAL 2026
 
 Codex Community HACKATHON
 
 In association with Codex and Poridhi
+
+live link : https://rural-health-triage-nine.vercel.app/
+<img width="1280" height="761" alt="image" src="https://github.com/user-attachments/assets/5462e587-a846-4e3d-a4be-0afc60b42a54" />
 
 ##  Project Overview
 
