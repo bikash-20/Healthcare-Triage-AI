@@ -1,86 +1,79 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
+import { useLanguage } from '../LanguageContext'
+import { t } from '../i18n'
 
 export default function InstallBanner() {
-  const [showBanner, setShowBanner] = useState(false)
+  const { lang } = useLanguage()
   const [deferredPrompt, setDeferredPrompt] = useState(null)
+  const [iosVisible, setIosVisible] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault()
-      setDeferredPrompt(e)
-      const dismissed = localStorage.getItem('installBannerDismissed')
-      if (!dismissed) {
-        setShowBanner(true)
-      }
+    if (typeof window === 'undefined') return
+
+    const dismissedFlag = localStorage.getItem('rht.installDismissed') === '1'
+    if (dismissedFlag) setDismissed(true)
+
+    const handleBeforeInstallPrompt = (event) => {
+      event.preventDefault()
+      setDeferredPrompt(event)
     }
+
+    const isIos =
+      /iphone|ipad|ipod/i.test(window.navigator.userAgent) &&
+      !window.MSStream
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    if (isIos && !isStandalone) setIosVisible(true)
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-
-    // iOS Safari detection (manual install guidance)
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    const isStandalone = window.navigator.standalone === true
-    if (isIOS && !isStandalone) {
-      const dismissed = localStorage.getItem('iosInstallDismissed')
-      if (!dismissed) {
-        setShowBanner(true)
-      }
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
     }
-
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
   }, [])
 
   const handleInstall = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt()
-      const { outcome } = await deferredPrompt.userChoice
-      if (outcome === 'accepted') {
-        localStorage.setItem('installBannerDismissed', 'true')
-      }
-      setDeferredPrompt(null)
-    }
+    if (!deferredPrompt) return
+    deferredPrompt.prompt()
+    await deferredPrompt.userChoice
+    setDeferredPrompt(null)
+    setDismissed(true)
+    localStorage.setItem('rht.installDismissed', '1')
   }
 
   const handleDismiss = () => {
-    setShowBanner(false)
-    localStorage.setItem('installBannerDismissed', 'true')
+    setDismissed(true)
+    localStorage.setItem('rht.installDismissed', '1')
   }
 
-  if (!showBanner) return null
-
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  if (dismissed || (!deferredPrompt && !iosVisible)) return null
 
   return (
-    <div className="fixed inset-x-0 top-0 z-50 p-2 sm:p-4">
-      <div className="max-w-2xl mx-auto glass-card p-3 sm:p-4 md:p-5 rounded-xl sm:rounded-2xl border border-cyan-400/40 bg-gradient-to-r from-cyan-500/15 to-emerald-500/15 shadow-[0_0_30px_rgba(6,182,212,0.2)]">
-        <div className="flex items-start justify-between gap-3 sm:gap-4">
-          <div className="flex items-start gap-3 sm:gap-4 min-w-0 flex-1">
-            <div className="text-xl sm:text-2xl flex-shrink-0 mt-0.5">📱</div>
-            <div className="min-w-0">
-              <h3 className="text-sm sm:text-base font-semibold text-white/95">Install Rural Health Triage</h3>
-              <p className="mt-1 text-xs sm:text-sm text-white/70 leading-snug">
-                {isIOS ? (
-                  <>Tap <span className="font-medium text-white/80">Share</span> then <span className="font-medium text-white/80">Add to Home Screen</span> for offline access</>
-                ) : (
-                  <>Get instant offline access and home screen shortcut. Install now for faster access.</>
-                )}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <button
-              onClick={handleDismiss}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg border border-white/20 text-white/70 hover:text-white/90 transition"
-            >
-              Later
-            </button>
-            <button
-              onClick={handleInstall}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg bg-cyan-500/80 hover:bg-cyan-400 text-white font-medium transition"
-            >
-              Install
-            </button>
-          </div>
-        </div>
+    <div className="glass-card border border-white/10 bg-white/5 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-soft-glow">
+      <div>
+        <p className="text-sm font-semibold text-white/90">{t('install.title', lang)}</p>
+        {iosVisible ? (
+          <p className="mt-1 text-xs text-white/60">{t('install.body_ios', lang)}</p>
+        ) : (
+          <p className="mt-1 text-xs text-white/60">{t('install.body_android', lang)}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        {deferredPrompt ? (
+          <button
+            type="button"
+            onClick={handleInstall}
+            className="btn-glass px-4 py-2 text-xs font-medium"
+          >
+            {t('install.install', lang)}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={handleDismiss}
+          className="btn-glass px-4 py-2 text-xs"
+        >
+          {t('install.later', lang)}
+        </button>
       </div>
     </div>
   )

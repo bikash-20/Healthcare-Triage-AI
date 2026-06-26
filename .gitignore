@@ -24,3 +24,9 @@ yarn-error.log*
 .vscode/
 .idea/
 .vercel
+
+# Vite build output
+frontend-pwa/dist/
+
+# Wrangler
+.wrangler/

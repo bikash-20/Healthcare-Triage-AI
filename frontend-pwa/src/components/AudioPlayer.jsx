@@ -1,38 +1,87 @@
-import { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useLanguage } from '../LanguageContext'
+import { t } from '../i18n'
 
-export default function AudioPlayer({ src, summary }) {
-  const audioRef = useRef(null)
+export default function AudioPlayer({ text }) {
+  const { lang } = useLanguage()
+  const [audioUrl, setAudioUrl] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const lastUrlRef = useRef(null)
 
-  const playStream = async () => {
-    try {
-      setLoading(true)
-      const text = summary || 'Clinical summary not available'
-      const url = `/api/tts/stream?q=${encodeURIComponent(text)}`
-      const response = await fetch(url)
-      if (!response.ok) throw new Error(`TTS failed: ${response.status}`)
-      const arrayBuffer = await response.arrayBuffer()
-      const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' })
-      const audioUrl = URL.createObjectURL(blob)
-      if (audioRef.current) {
-        audioRef.current.src = audioUrl
-        audioRef.current.load()
-        await audioRef.current.play()
-      }
-    } catch (e) {
-      console.error('TTS failed', e)
-      alert('Audio failed: ' + e.message)
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    return () => {
+      if (lastUrlRef.current) URL.revokeObjectURL(lastUrlRef.current)
     }
+  }, [])
+
+  useEffect(() => {
+    if (!text || !text.trim()) {
+      setAudioUrl(null)
+      return
+    }
+
+    const controller = new AbortController()
+    let cancelled = false
+
+    const loadAudio = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const params = new URLSearchParams({ q: text.slice(0, 600), lang })
+        const res = await fetch(`/api/tts/stream?${params}`, { signal: controller.signal })
+        if (!res.ok) {
+          throw new Error(t('tts.audio_failed', lang))
+        }
+        const blob = await res.blob()
+        if (cancelled) return
+        if (lastUrlRef.current) URL.revokeObjectURL(lastUrlRef.current)
+        const url = URL.createObjectURL(blob)
+        lastUrlRef.current = url
+        setAudioUrl(url)
+      } catch (err) {
+        if (cancelled) return
+        if (err.name !== 'AbortError') {
+          console.error('TTS error:', err)
+          setError(err.message || t('tts.audio_failed', lang))
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadAudio()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [text, lang])
+
+  if (!text || !text.trim()) {
+    return (
+      <div className="glass-card p-4 rounded-3xl border border-white/10 bg-white/5 text-xs text-white/60">
+        {t('tts.no_data', lang)}
+      </div>
+    )
   }
 
   return (
-    <div className="w-full">
-      <audio ref={audioRef} preload="none" />
-      <button onClick={playStream} disabled={loading} className="w-full px-4 py-2 sm:py-3 bg-indigo-500/80 hover:bg-indigo-400 text-white rounded-lg sm:rounded-xl font-medium transition">
-        {loading ? '⏳ Loading...' : '🔊 Listen Clinical Summary'}
-      </button>
+    <div className="glass-card p-4 sm:p-5 rounded-3xl border border-white/10 bg-white/5 shadow-soft-glow space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs uppercase tracking-wide text-white/60">
+          {t('tts.listen_summary', lang)}
+        </span>
+        {loading ? (
+          <span className="text-xs text-white/60">{t('tts.loading', lang)}…</span>
+        ) : null}
+      </div>
+      {error ? (
+        <p className="text-xs text-rose-300/80">{error}</p>
+      ) : audioUrl ? (
+        <audio src={audioUrl} controls className="w-full" />
+      ) : (
+        <p className="text-xs text-white/60">{t('tts.loading', lang)}…</p>
+      )}
     </div>
   )
 }

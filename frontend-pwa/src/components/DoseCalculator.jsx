@@ -1,175 +1,154 @@
 import React, { useState } from 'react'
+import { useLanguage } from '../LanguageContext'
+import { t } from '../i18n'
 
-export default function DoseCalculator() {
-  const [medication, setMedication] = useState('')
+const DEFAULT_MEDICATIONS = [
+  { key: 'paracetamol', label: 'Paracetamol', unit: 'mg' },
+  { key: 'amoxicillin', label: 'Amoxicillin', unit: 'mg' },
+  { key: 'ibuprofen', label: 'Ibuprofen', unit: 'mg' },
+  { key: 'ors', label: 'ORS', unit: 'sachet' },
+]
+
+export default function DoseCalculator({ vitals = {} }) {
+  const { lang } = useLanguage()
   const [age, setAge] = useState('')
   const [weight, setWeight] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [medication, setMedication] = useState(DEFAULT_MEDICATIONS[0].key)
   const [result, setResult] = useState(null)
-  const [audioLoading, setAudioLoading] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
-  const calculate = async () => {
-    if (!medication || !age || !weight) return
+  const submit = async (e) => {
+    e.preventDefault()
     setLoading(true)
+    setError(null)
     setResult(null)
-
     try {
       const res = await fetch('/api/dose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ medication, age: Number(age), weight: Number(weight) })
+        body: JSON.stringify({
+          age: Number(age),
+          weight: Number(weight),
+          medication,
+          vitals,
+          lang,
+        }),
       })
-      const data = await res.json()
-      setResult(data)
+      const payload = await res.json()
+      if (!res.ok) {
+        throw new Error(payload.detail?.[0]?.msg || payload.detail || t('dose.failed', lang))
+      }
+      setResult(payload)
     } catch (err) {
-      console.error('Dose calculation failed:', err)
+      console.error('Dose calc error:', err)
+      setError(err.message || t('dose.failed', lang))
     } finally {
       setLoading(false)
     }
   }
 
-  const speakResult = async () => {
-    if (!result) return
-    setAudioLoading(true)
-    try {
-      // ✅ Only use English for TTS since CF Worker can't speak Bengali
-      const parts = [
-        result.summary_en,
-        result.total_dose ? `Total dose: ${result.total_dose}` : '',
-        result.frequency ? `Frequency: ${result.frequency}` : '',
-        result.warning_en || ''
-      ].filter(Boolean).join('. ')
-
-      if (!parts.trim()) {
-        alert('No content to speak')
-        return
-      }
-
-      const url = `/api/tts/stream?q=${encodeURIComponent(parts)}`
-      const response = await fetch(url)
-      if (!response.ok) throw new Error(`TTS failed: ${response.status}`)
-
-      const arrayBuffer = await response.arrayBuffer()
-      const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' })
-      const audioUrl = URL.createObjectURL(blob)
-
-      // ✅ Create fresh Audio element each time — avoids NotSupportedError
-      const audio = new Audio(audioUrl)
-      await audio.play()
-
-    } catch (err) {
-      console.error('TTS failed:', err)
-      alert('Audio failed: ' + err.message)
-    } finally {
-      setAudioLoading(false)
-    }
-  }
+  const selectedMed = DEFAULT_MEDICATIONS.find((m) => m.key === medication) || DEFAULT_MEDICATIONS[0]
 
   return (
-    <div className="glass-card p-4 sm:p-6 rounded-xl sm:rounded-2xl w-full space-y-4">
-      {/* Header */}
+    <div className="glass-card p-5 sm:p-6 rounded-3xl border border-white/10 bg-white/5 shadow-soft-glow space-y-4">
       <div>
-        <label className="text-xs uppercase tracking-wide text-white/70 block mb-1">
-          Dose Calculator
-        </label>
-        <p className="text-xs text-white/50">
-          রোগীর বয়স ও ওজন অনুযায়ী নিরাপদ ওষুধের ডোজ গণনা
-        </p>
+        <h3 className="text-sm sm:text-base font-semibold text-white/90">
+          {t('dose.title', lang)}
+        </h3>
+        <p className="mt-1 text-xs text-white/60">{t('dose.subtitle', lang)}</p>
       </div>
 
-      {/* Medication input */}
-      <div className="space-y-1">
-        <label className="text-xs text-white/70">Medication name / ওষুধের নাম</label>
-        <input
-          value={medication}
-          onChange={e => setMedication(e.target.value)}
-          placeholder="e.g. Paracetamol / প্যারাসিটামল"
-          className="w-full bg-transparent border border-white/20 p-3 rounded-2xl text-white placeholder:text-white/40 text-sm"
-        />
-      </div>
-
-      {/* Age and Weight */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-xs text-white/70">Age (years) / বয়স</label>
-          <input
-            value={age}
-            onChange={e => setAge(e.target.value)}
-            type="number"
-            placeholder="e.g. 5"
-            className="w-full bg-transparent border border-white/20 p-3 rounded-2xl text-white placeholder:text-white/40 text-sm"
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-white/70">Weight (kg) / ওজন</label>
-          <input
-            value={weight}
-            onChange={e => setWeight(e.target.value)}
-            type="number"
-            placeholder="e.g. 20"
-            className="w-full bg-transparent border border-white/20 p-3 rounded-2xl text-white placeholder:text-white/40 text-sm"
-          />
-        </div>
-      </div>
-
-      {/* Calculate button */}
-      <button
-        onClick={calculate}
-        disabled={loading || !medication || !age || !weight}
-        className="btn-glass w-full px-4 py-3 text-sm font-medium disabled:opacity-50"
-      >
-        {loading ? '⏳ Calculating...' : '💊 Calculate Safe Dose'}
-      </button>
-
-      {/* Result */}
-      {result && (
-        <div className={`rounded-2xl p-4 space-y-3 border ${result.is_dangerous
-          ? 'border-red-400/50 bg-red-500/10'
-          : 'border-green-400/30 bg-green-500/10'}`}
-        >
-          {/* Warning banner */}
-          {result.is_dangerous && (
-            <div className="flex items-start gap-2 bg-red-600/30 border border-red-400/40 rounded-xl p-3">
-              <span className="text-lg">⚠️</span>
-              <div>
-                <p className="text-sm font-bold text-red-300">{result.warning_en}</p>
-                <p className="text-sm text-red-300/80 mt-1">{result.warning_bn}</p>
-              </div>
-            </div>
-          )}
-
-          {/* English result */}
-          <div>
-            <p className="text-xs uppercase tracking-wide text-white/50 mb-1">English</p>
-            <p className="text-sm text-white/90 leading-relaxed">{result.summary_en}</p>
+      <form onSubmit={submit} className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs text-white/70">{t('dose.age', lang)}</label>
+            <input
+              type="number"
+              min="0"
+              max="120"
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+              className="w-full bg-transparent border border-white/20 p-3 rounded-2xl text-white"
+              placeholder="5"
+              required
+            />
           </div>
-
-          {/* Bengali result */}
-          <div className="pt-2 border-t border-white/10">
-            <p className="text-xs uppercase tracking-wide text-white/50 mb-1">বাংলা</p>
-            <p className="text-sm text-white/90 leading-relaxed">{result.summary_bn}</p>
+          <div className="space-y-1">
+            <label className="text-xs text-white/70">{t('dose.weight', lang)}</label>
+            <input
+              type="number"
+              min="0"
+              max="300"
+              step="0.1"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              className="w-full bg-transparent border border-white/20 p-3 rounded-2xl text-white"
+              placeholder="18"
+              required
+            />
           </div>
+        </div>
 
-          {/* Dose details */}
-          {result.dose_per_kg && (
-            <div className="pt-2 border-t border-white/10 grid grid-cols-2 gap-2 text-xs text-white/60">
-              <div>Dose/kg: <span className="text-white/90 font-medium">{result.dose_per_kg}</span></div>
-              <div>Total dose: <span className="text-white/90 font-medium">{result.total_dose}</span></div>
-              <div>Frequency: <span className="text-white/90 font-medium">{result.frequency}</span></div>
-              <div>Route: <span className="text-white/90 font-medium">{result.route}</span></div>
-            </div>
-          )}
-
-          {/* Listen button */}
-          <button
-            onClick={speakResult}
-            disabled={audioLoading}
-            className="w-full px-4 py-2 bg-indigo-500/80 hover:bg-indigo-400 text-white rounded-xl text-sm font-medium transition disabled:opacity-50"
+        <div className="space-y-1">
+          <label className="text-xs text-white/70">{t('dose.medication', lang)}</label>
+          <select
+            value={medication}
+            onChange={(e) => setMedication(e.target.value)}
+            className="w-full bg-transparent border border-white/20 p-3 rounded-2xl text-white"
           >
-            {audioLoading ? '⏳ Loading...' : '🔊 Listen / শুনুন'}
-          </button>
+            {DEFAULT_MEDICATIONS.map((m) => (
+              <option key={m.key} value={m.key} className="bg-slate-900">
+                {m.label}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="btn-glass w-full px-5 py-3 text-sm font-medium disabled:opacity-50"
+        >
+          {loading ? t('dose.calculating', lang) : t('dose.submit', lang)}
+        </button>
+      </form>
+
+      {error ? <p className="text-xs text-rose-300/80">{error}</p> : null}
+
+      {result ? (
+        <div className="space-y-2 text-sm text-white/85">
+          <div className="flex items-center justify-between">
+            <span className="text-xs uppercase tracking-wide text-white/60">
+              {t('dose.result_label', lang)} ({selectedMed.label})
+            </span>
+            <span className="text-xs text-white/60">{selectedMed.unit}</span>
+          </div>
+          <p className="text-lg font-semibold">
+            {result.dose != null ? `${result.dose} ${selectedMed.unit}` : t('dose.unavailable', lang)}
+          </p>
+          {result.frequency ? (
+            <p className="text-xs text-white/70">
+              <span className="text-white/50">{t('dose.frequency', lang)}:</span> {result.frequency}
+            </p>
+          ) : null}
+          {result.duration ? (
+            <p className="text-xs text-white/70">
+              <span className="text-white/50">{t('dose.duration', lang)}:</span> {result.duration}
+            </p>
+          ) : null}
+          {result.notes ? (
+            <p className="text-xs text-white/70 whitespace-pre-line">
+              <span className="text-white/50">{t('dose.notes', lang)}:</span> {result.notes}
+            </p>
+          ) : null}
+          {result.warning ? (
+            <p className="text-xs text-amber-300/90">
+              <span className="text-amber-200">{t('dose.warning', lang)}:</span> {result.warning}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
