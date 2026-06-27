@@ -37,9 +37,11 @@ rural-health-triage/
 `-- edge-router/       Cloudflare Worker, deployed via wrangler
 ```
 
-The frontend is a static SPA. All requests for AI-backed endpoints are forwarded by the FastAPI backend to a Cloudflare Worker that owns the LLM provider logic and the API keys. The worker can route to Workers AI, OpenRouter free models, OpenAI, or any combination of those. The backend never holds OpenAI or OpenRouter keys directly; it only knows the worker's URL and an optional shared secret.
+The frontend is a static SPA. All AI-backed requests flow through the FastAPI backend, which applies adaptive provider routing: if a premium API key is set in the environment, the backend dispatches directly to that provider (OpenAI, Anthropic, Gemini, or Groq); otherwise it forwards to the Cloudflare Worker that owns the free-tier fallback chain.
 
-The reason for that split is operational. Free model quotas change weekly, and a hackathon-grade demo benefits from being able to swap providers without redeploying the backend. The worker is small, fast to redeploy, and is the only place secrets are stored.
+The provider tier is decided per request and exposed at `GET /api/provider-status`. A key set on the backend beats the worker; the worker beats a local offline stub. The worker handles free-model routing (Workers AI binding, OpenRouter free tier) and is the only place free-tier secrets live. Premium keys live in the backend environment, never on the worker, so a stolen worker secret cannot be used to bill against an OpenAI account.
+
+The reason for that split is operational. Free model quotas change weekly, and a hackathon-grade demo benefits from being able to swap providers without redeploying the backend. The worker is small, fast to redeploy, and the backend's premium tier can be upgraded in 30 seconds by adding one environment variable.
 
 ---
 
@@ -99,6 +101,7 @@ All endpoints accept CORS and return JSON. The `lang` query parameter or body fi
 | Method | Path                 | Purpose                                                     |
 |--------|----------------------|-------------------------------------------------------------|
 | GET    | /api/health          | Health check                                                |
+| GET    | /api/provider-status | Active LLM tier (free vs premium) and upgrade hint          |
 | POST   | /api/audio/intake    | Upload audio blob, returns transcript and detected language |
 | POST   | /api/ocr/upload      | Upload image, returns raw text and auto-filled vitals       |
 | POST   | /api/ocr/parse       | Structure raw text into medications, diagnoses, labs        |
@@ -160,11 +163,21 @@ The frontend is already deployed on Vercel through this repository. The vercel.j
 
    ```
    EDGE_ROUTER_URL = https://rural-health-triage-router.<your-subdomain>.workers.dev
-   OPENAI_API_KEY = (optional, leave empty for free-tier routing)
-   ELEVENLABS_API_KEY_1 = (optional)
-   ELEVENLABS_API_KEY_2 = (optional)
-   ELEVENLABS_API_KEY_3 = (optional)
-   BACKEND_API_KEY = (optional shared secret, must match worker)
+
+   # Optional premium keys — set any ONE of these to upgrade from free to premium.
+   # Priority order is OpenAI > Anthropic > Gemini > Groq. First one set wins.
+   OPENAI_API_KEY =
+   ANTHROPIC_API_KEY =
+   GEMINI_API_KEY =
+   GROQ_API_KEY =
+
+   # Optional TTS providers used by /api/tts/stream
+   ELEVENLABS_API_KEY_1 =
+   ELEVENLABS_API_KEY_2 =
+   ELEVENLABS_API_KEY_3 =
+
+   # Optional shared secret between backend and worker
+   BACKEND_API_KEY =
    ```
 
 8. Click Create Web Service. After the first build, Render gives you a URL like `https://rural-health-triage-backend.onrender.com`.
@@ -194,6 +207,63 @@ For OCR to work in production, set `GOOGLE_APPLICATION_CREDENTIALS` on Render to
 
 ---
 
+## Going premium in 30 seconds
+
+The system runs on free models today. The moment you put a paid API key into the Render environment, the backend switches to that provider on the next request — no code change, no rebuild, no extra deploy.
+
+**Step 1.** Open your Render service, go to **Environment**, and add one of these keys:
+
+```
+OPENAI_API_KEY      sk-...
+ANTHROPIC_API_KEY   sk-ant-...
+GEMINI_API_KEY      AIza...
+GROQ_API_KEY        gsk_...
+```
+
+**Step 2.** Wait ~30 seconds for the auto-restart. The startup log will now contain a line like:
+
+```
+INFO backend :: LLM provider tier=premium provider=openai model=[redacted]o-mini via=direct
+```
+
+**Step 3.** Verify the upgrade:
+
+```bash
+curl https://rural-health-triage-backend.onrender.com/api/provider-status
+```
+
+Returns:
+
+```json
+{
+  "tier": "premium",
+  "provider": "openai",
+  "model": "[redacted]o-mini",
+  "via": "direct",
+  "edge_router_configured": true,
+  "fallback_chain": ["edge_router_free", "local_stub"]
+}
+```
+
+**Step 4.** Send a chat or triage request — the response will come back from the premium provider. If the premium call ever fails, the backend automatically falls back to the free edge router chain, so the API never goes down.
+
+### Which premium key should you buy?
+
+| Provider  | Best for                                          | Cheapest model          | Notes                              |
+|-----------|---------------------------------------------------|-------------------------|------------------------------------|
+| OpenAI    | Best overall clinical reasoning quality           | `[redacted]o-mini`      | Wide Bengali support, easy to buy  |
+| Anthropic | Most cautious, longest reasoning chains           | `claude-3-5-haiku`      | Excellent at structured JSON       |
+| Gemini    | Highest free-tier allowance even on paid tiers    | `gemini-2.0-flash`      | Strong Bangla, fast, low cost      |
+| Groq      | Lowest latency (sub-second on small models)       | `llama-3.3-70b-versatile` | OpenAI-compatible API             |
+
+Pick based on what you're optimizing for: **cost** → Gemini Flash or Groq Llama 70B; **quality** → OpenAI `[redacted]o-mini` or Anthropic Haiku; **speed** → Groq.
+
+### Removing the key
+
+Just delete the environment variable. The next request will detect no premium key and fall back to the free edge router chain automatically. No redeploy required.
+
+---
+
 ## Design notes
 
 A few decisions worth mentioning because they are not obvious from the code.
@@ -204,7 +274,9 @@ The vitals anomaly detector is intentionally conservative. It is a rule engine, 
 
 TTS provider fallback is implemented as a single function that tries Worker AI first, then OpenAI TTS, then ElevenLabs with key rotation on 401, 402, 403, and 429 responses. Bengali text routes to a female voice (shimmer on OpenAI) because that tends to read Bangla better than the default voices.
 
-The edge router exists for two reasons. First, it lets the backend avoid holding per-user API keys. Second, it lets the routing logic evolve independently of the backend. Today it tries the user's key if provided, then a configured primary model, then free fallbacks. Tomorrow it can add caching, rate limiting, or abuse detection without touching the Python code.
+The edge router exists for two reasons. First, it keeps the free-tier routing logic in a place that can evolve without backend redeploys. Second, it isolates free-tier provider secrets from the premium path, so a compromised worker secret cannot bill against an OpenAI account. Premium provider keys live only in the backend's environment and are dispatched directly to the upstream API, never through the worker.
+
+Provider routing is decided per request by `llm_client.call_llm`. A caller-supplied key (per-browser override) wins first. Then any backend-configured premium key (OpenAI > Anthropic > Gemini > Groq). Then the edge router. Then an offline stub that echoes the input back so the demo never hard-fails. The selected tier is logged once at backend startup and re-confirmed by the `GET /api/provider-status` endpoint at any time.
 
 ---
 

@@ -28,6 +28,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from openai import AsyncOpenAI
 
 from . import llm_client
+from .llm_client import current_provider as _current_provider
 from .ml_engine import analyze_vitals
 from .schemas import (
     AudioIntakeResponse,
@@ -55,6 +56,16 @@ logging.basicConfig(
 )
 
 _openai_client: AsyncOpenAI | None = None
+
+# Log provider tier once at import time — visible in Render deploy logs.
+_tier_info = _current_provider()
+logger.info(
+    "LLM provider tier=%s provider=%s model=%s via=%s",
+    _tier_info.get("tier"),
+    _tier_info.get("provider"),
+    _tier_info.get("model"),
+    _tier_info.get("via"),
+)
 
 
 def _get_openai() -> AsyncOpenAI | None:
@@ -98,6 +109,26 @@ def create_app() -> FastAPI:
             "edge_router_configured": bool(EDGE_ROUTER_URL),
             "openai_configured": bool(OPENAI_KEY),
             "supported_languages": ["en", "bn"],
+            "provider": _current_provider(),
+        }
+
+    # ------------------------------------------------------ provider status
+    @app.get("/api/provider-status")
+    async def provider_status() -> dict:
+        """Tell operators which LLM tier is active and how to upgrade.
+
+        No secrets are returned — only the provider name and model.
+        """
+        info = _current_provider()
+        upgrade_hint = (
+            "Set OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or "
+            "GROQ_API_KEY in the backend environment to enable premium routing. "
+            "OpenAI wins first, then Anthropic, Gemini, Groq."
+        )
+        return {
+            **info,
+            "upgrade_hint": upgrade_hint,
+            "supported_premium_providers": ["openai", "anthropic", "gemini", "groq"],
         }
 
     # ----------------------------------------------------------------- audio
@@ -172,8 +203,8 @@ def create_app() -> FastAPI:
                 f"Text:\n{raw}"
             )
             try:
-                parsed = await llm_client.call_edge_router(
-                    prompt, temperature=0.0, max_tokens=800, lang=detected
+                parsed = await llm_client.call_llm(
+                    prompt, temperature=0.0, max_tokens=800, lang=detected,
                 )
                 result = OCRParseResult(**parsed, raw_text=raw)
             except Exception as exc:  # noqa: BLE001
@@ -206,8 +237,8 @@ def create_app() -> FastAPI:
             f"Return JSON matching schema:\n{OCRParseResult.model_json_schema()}\n\n"
             f"Text:\n{payload.raw_text}"
         )
-        parsed = await llm_client.call_edge_router(
-            prompt, temperature=0.0, max_tokens=800, lang=payload.lang
+        parsed = await llm_client.call_llm(
+            prompt, temperature=0.0, max_tokens=800, lang=payload.lang,
         )
         result = OCRParseResult(**parsed, raw_text=payload.raw_text)
         out = result.model_dump()
@@ -229,8 +260,8 @@ def create_app() -> FastAPI:
             "If vitals indicate a red alert, triage_severity must be 'Red' or 'Black'. "
             "Return only JSON."
         )
-        parsed = await llm_client.call_edge_router(
-            prompt, temperature=0.0, max_tokens=800, lang=lang
+        parsed = await llm_client.call_llm(
+            prompt, temperature=0.0, max_tokens=800, lang=lang,
         )
         triage = TriageResponse(**parsed)
         out = triage.model_dump()
@@ -264,8 +295,8 @@ def create_app() -> FastAPI:
             "CRITICAL: Bengali text must use real Unicode Bengali characters "
             "(অ আ ক খ etc), never escape sequences. Return only JSON."
         )
-        parsed = await llm_client.call_edge_router(
-            prompt, temperature=0.0, max_tokens=600, lang=lang
+        parsed = await llm_client.call_llm(
+            prompt, temperature=0.0, max_tokens=600, lang=lang,
         )
         if isinstance(parsed, dict):
             parsed.setdefault("lang", lang)
@@ -321,7 +352,7 @@ def create_app() -> FastAPI:
         messages = [{"role": "system", "content": system_prompt}] + [
             m.model_dump() for m in payload.messages
         ]
-        text = await llm_client.call_edge_router(
+        text = await llm_client.call_llm(
             messages=messages,
             response_mode="raw",
             temperature=0.6,

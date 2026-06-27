@@ -2,7 +2,7 @@
 
 These exercise the FastAPI app via httpx.AsyncClient + ASGI transport, so no
 network is required. LLM calls are stubbed via monkeypatch on
-``backend_app.llm_client.call_edge_router``.
+``backend_app.llm_client.call_llm``.
 """
 import importlib
 import sys
@@ -73,7 +73,7 @@ async def test_ocr_parse(monkeypatch):
         }
 
     backend_app = _load_app()
-    monkeypatch.setattr(backend_app.llm_client, "call_edge_router", fake_call)
+    monkeypatch.setattr(backend_app.llm_client, "call_llm", fake_call)
     transport = ASGITransport(app=backend_app.create_app())
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         r = await ac.post("/api/ocr/parse", json={"raw_text": "Paracetamol 500mg 1+0+1\nWBC:7.5"})
@@ -95,7 +95,7 @@ async def test_triage_endpoint(monkeypatch):
         }
 
     backend_app = _load_app()
-    monkeypatch.setattr(backend_app.llm_client, "call_edge_router", fake_call)
+    monkeypatch.setattr(backend_app.llm_client, "call_llm", fake_call)
     transport = ASGITransport(app=backend_app.create_app())
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         payload = {
