@@ -131,6 +131,11 @@ def _add(entry: DrugEntry) -> None:
         _FORMULARY.setdefault(alias.lower(), entry)
 
 
+def _unique_entries() -> Dict[str, DrugEntry]:
+    """Return canonical entries keyed by their stable drug key."""
+    return {entry.key: entry for entry in _FORMULARY.values()}
+
+
 # ---------- Analgesics / antipyretics ---------------------------------------
 
 _add(DrugEntry(
@@ -178,6 +183,7 @@ _add(DrugEntry(
                                    "১৮ বছরের কম বয়সীদের দেবেন না (রেই সিন্ড্রোমের ঝুঁকি)।")),
     notes_en="Analgesic use is largely replaced by paracetamol/ibuprofen in Bangladesh.",
     notes_bn="বাংলাদেশে ব্যথানাশক হিসেবে ব্যবহার কমেছে।",
+    aliases=("acetylsalicylic acid", "asa"),
 ))
 
 _add(DrugEntry(
@@ -241,7 +247,7 @@ _add(DrugEntry(
     adult_rule=_adult(625, max_daily=1875, freq=2, interval=12),
     notes_en="For resistant infections. Dose expressed as amoxicillin component.",
     notes_bn="প্রতিরোধী সংক্রমণে। অ্যামোক্সিসিলিনের ডোজ হিসাবে গণনা।",
-    aliases=("co-amoxiclav", "augmentin"),
+    aliases=("amoxicillin/clavulanic acid", "co-amoxiclav", "augmentin"),
 ))
 
 _add(DrugEntry(
@@ -258,6 +264,7 @@ _add(DrugEntry(
                                      "ইনজেকশনই শুধু — স্বাস্থ্যকেন্দ্রে পাঠান।")),
     notes_en="Severe infections: pneumonia, meningitis, syphilis.",
     notes_bn="গুরুতর সংক্রমণে: নিউমোনিয়া, মেনিনজাইটিস, সিফিলিস।",
+    aliases=("penicillin g",),
 ))
 
 _add(DrugEntry(
@@ -269,6 +276,7 @@ _add(DrugEntry(
     adult_rule=_adult(500, max_daily=2000, freq=2, interval=12),
     notes_en="Oral step-down after benzylpenicillin; strep pharyngitis.",
     notes_bn="বেনজিলপেনিসিলিনের পরে মুখে খাওয়ার ওষুধ।",
+    aliases=("penicillin v", "phenoxymethyl penicillin"),
 ))
 
 _add(DrugEntry(
@@ -374,6 +382,7 @@ _add(DrugEntry(
     adult_rule=_adult(500, max_daily=500, freq=1, interval=24),
     notes_en="3-day course. Atypical pneumonia, strep, chlamydia.",
     notes_bn="৩ দিনের কোর্স। অ্যাটিপিক্যাল নিউমোনিয়া, ক্ল্যামাইডিয়ায়।",
+    aliases=("azithro",),
 ))
 
 _add(DrugEntry(
@@ -736,7 +745,7 @@ _add(DrugEntry(
     adult_rule=DoseRule(freq_per_day=4, min_age_months=12 * 12, route="Inhaled"),
     notes_en="Asthma, COPD. 100mcg/puff, 1-2 puffs q4-6h.",
     notes_bn="হাঁপানি ও COPD-তে।",
-    aliases=("albuterol",),
+    aliases=("albuterol", "salbutamol inhaler"),
 ))
 
 _add(DrugEntry(
@@ -781,6 +790,7 @@ _add(DrugEntry(
                                    "২ সপ্তাহের বেশি ব্যবহারে ধীরে কমান।")),
     notes_en="Asthma exacerbation, allergic reactions, autoimmune disease.",
     notes_bn="হাঁপানি, অ্যালার্জি ও অটোইমিউন রোগে।",
+    aliases=("prednisone",),
 ))
 
 _add(DrugEntry(
@@ -1481,6 +1491,7 @@ _add(DrugEntry(
     adult_rule=DoseRule(freq_per_day=99, min_age_months=12 * 12, route="Oral"),
     notes_en="Bangladesh IMCI standard co-pack for childhood diarrhea.",
     notes_bn="বাংলাদেশের IMCI স্ট্যান্ডার্ড।",
+    aliases=("oral rehydration solution with zinc", "ors and zinc"),
 ))
 
 
@@ -1583,12 +1594,12 @@ _add(DrugEntry(
 
 def drug_count() -> int:
     """Number of drugs in the formulary."""
-    return len(_FORMULARY)
+    return len(_unique_entries())
 
 
 def list_drugs() -> list[dict[str, str]]:
     """Return [{key, display_en, display_bn, category}, ...] sorted by display_en."""
-    items = sorted(_FORMULARY.values(), key=lambda d: d.display_en.lower())
+    items = sorted(_unique_entries().values(), key=lambda d: d.display_en.lower())
     return [
         {
             "key": d.key,
@@ -1602,7 +1613,7 @@ def list_drugs() -> list[dict[str, str]]:
 
 def list_categories() -> list[str]:
     """Return unique sorted categories present in the formulary."""
-    return sorted({d.category for d in _FORMULARY.values()})
+    return sorted({d.category for d in _unique_entries().values()})
 
 
 def _normalize(name: str) -> str:

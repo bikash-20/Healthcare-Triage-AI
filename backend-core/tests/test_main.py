@@ -380,3 +380,13 @@ async def test_formulary_lookup_helper():
     assert f.lookup("প্যারাসিটামল").key == "paracetamol"
     # Unknown
     assert f.lookup("xyz_not_real") is None
+
+
+@pytest.mark.asyncio
+async def test_formulary_alias_coverage():
+    backend_app = _load_app()
+    f = backend_app.formulary
+    assert f.lookup("prednisone").key == "prednisolone"
+    assert f.lookup("acetylsalicylic acid").key == "aspirin"
+    assert f.lookup("salbutamol inhaler").key == "salbutamol"
+    assert f.lookup("oral rehydration solution with zinc").key == "ors_zinc"
