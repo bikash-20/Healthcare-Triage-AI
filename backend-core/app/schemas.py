@@ -92,7 +92,14 @@ class VitalsRequest(BaseModel):
 # ---------------------------------------------------------------------------
 class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant"]
-    content: str = Field(..., min_length=1)
+    content: str = Field(default="", min_length=0)
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def _coerce_content(cls, value):
+        if value is None:
+            return ""
+        return str(value)
 
 
 class ChatRequest(BaseModel):

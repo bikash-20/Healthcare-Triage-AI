@@ -54,14 +54,18 @@ export default function NexoraChatbot({ context = {} }) {
       })
       const payload = await res.json()
       if (!res.ok) {
-        throw new Error(payload.detail || t('chat.error', lang))
+        const detail = Array.isArray(payload.detail)
+          ? payload.detail.map((d) => d.msg || JSON.stringify(d)).join('; ')
+          : payload.detail || payload.error || t('chat.error', lang)
+        throw new Error(detail)
       }
-      setMessages([...nextMessages, { role: 'assistant', content: payload.reply || '' }])
+      setMessages([...nextMessages, { role: 'assistant', content: payload.reply || payload.assistant || '' }])
     } catch (err) {
       console.error('Chat error:', err)
+      const msg = err && err.message ? err.message : String(err)
       setMessages([
         ...nextMessages,
-        { role: 'assistant', content: err.message || t('chat.error', lang) },
+        { role: 'assistant', content: msg || t('chat.error', lang) },
       ])
     } finally {
       setSending(false)
