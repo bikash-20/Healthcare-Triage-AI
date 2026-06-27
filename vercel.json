@@ -3,7 +3,9 @@
   "installCommand": "npm install --prefix frontend-pwa",
   "buildCommand": "npm run build --prefix frontend-pwa",
   "outputDirectory": "frontend-pwa/dist",
-  
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://rural-health-triage-backend.onrender.com/api/$1" }
+  ],
   "routes": [
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
