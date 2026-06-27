@@ -27,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from openai import AsyncOpenAI
 
-from . import llm_client
+from . import formulary, llm_client
 from .llm_client import current_provider as _current_provider
 from .ml_engine import analyze_vitals
 from .schemas import (
@@ -87,6 +87,38 @@ async def _save_upload(file: UploadFile) -> tuple[Path, bytes]:
     with os.fdopen(fd, "wb") as fh:
         fh.write(content)
     return path, content
+
+
+def _format_summary_en(r: dict) -> str:
+    """Human-readable one-paragraph dose summary in English."""
+    parts = [
+        f"{r['display_en']}: give {r['formatted_dose_en']} per dose, "
+        f"{r['freq_per_day']} times per day (every {r['interval_hours']} hours) "
+        f"via {r['route']}."
+    ]
+    if r.get("notes"):
+        parts.append(r["notes"])
+    if r["warnings"]:
+        parts.append("Warnings: " + "; ".join(r["warnings"]))
+    if r["is_dangerous"]:
+        parts.append("⚠ DO NOT ADMINISTER without prescriber review.")
+    return " ".join(parts)
+
+
+def _format_summary_bn(r: dict) -> str:
+    """Human-readable one-paragraph dose summary in Bengali."""
+    parts = [
+        f"{r['display_bn']}: প্রতি ডোজে {r['formatted_dose_en']} দিন, "
+        f"দিনে {r['freq_per_day']} বার ({r['interval_hours']} ঘণ্টা অন্তর), "
+        f"{r['route']}।"
+    ]
+    if r.get("notes"):
+        parts.append(r["notes"])
+    if r["warnings"]:
+        parts.append("সতর্কতা: " + "; ".join(r["warnings"]))
+    if r["is_dangerous"]:
+        parts.append("⚠ প্রেসক্রাইবারের অনুমোদন ছাড়া দেবেন না।")
+    return " ".join(parts)
 
 
 def create_app() -> FastAPI:
@@ -272,6 +304,47 @@ def create_app() -> FastAPI:
     @app.post("/api/dose")
     async def dose_endpoint(payload: DoseRequest) -> dict:
         lang = payload.lang or detect_language(payload.medication)
+
+        # 1) Try the hand-curated formulary first — deterministic, can't hallucinate.
+        formulary_result = formulary.calculate_dose(
+            payload.medication, payload.age, payload.weight, lang=lang,
+        )
+        if formulary_result is not None:
+            logger.info(
+                "dose formulary hit medication=%s key=%s age=%s weight=%s",
+                payload.medication, formulary_result["matched_key"],
+                payload.age, payload.weight,
+            )
+            return {
+                "source": "formulary",
+                "matched_drug_key": formulary_result["matched_key"],
+                "display_name": formulary_result["display_name_used"],
+                "category": formulary_result["category"],
+                "dose_per_kg": (
+                    f"{formulary_result['computed_via']}"
+                ),
+                "total_dose": formulary_result["formatted_dose_en"],
+                "frequency": (
+                    f"{formulary_result['freq_per_day']}x/day, every "
+                    f"{formulary_result['interval_hours']}h"
+                ),
+                "route": formulary_result["route"],
+                "is_dangerous": formulary_result["is_dangerous"],
+                "warnings": formulary_result["warnings"],
+                "summary_en": _format_summary_en(formulary_result),
+                "summary_bn": _format_summary_bn(formulary_result),
+                "lang": lang,
+                "formulary_dose_mg": formulary_result["dose_mg_per_dose"],
+                "formulary_max_daily_mg": formulary_result["max_daily_mg"],
+                "formulary_age_rule_used": formulary_result["age_rule_used"],
+                "notes": formulary_result["notes"],
+            }
+
+        # 2) Fallback to LLM for drugs not in the formulary.
+        logger.info(
+            "dose formulary miss medication=%s — falling back to LLM",
+            payload.medication,
+        )
         prompt = (
             "You are a clinical pharmacist AI for rural health workers in Bangladesh. "
             "Calculate the safe medication dose based on patient age and weight. "
@@ -300,7 +373,39 @@ def create_app() -> FastAPI:
         )
         if isinstance(parsed, dict):
             parsed.setdefault("lang", lang)
+            parsed.setdefault("source", "llm")
         return parsed
+
+    # ----------------------------------------------------------- /api/formulary
+    @app.get("/api/formulary")
+    async def formulary_endpoint() -> dict:
+        """Inspect the hand-curated drug formulary (no secrets, no LLM calls)."""
+        drugs = formulary.list_drugs()
+        return {
+            "count": formulary.drug_count(),
+            "categories": formulary.list_categories(),
+            "drugs": drugs,
+        }
+
+    @app.get("/api/formulary/{drug_key}")
+    async def formulary_drug_endpoint(drug_key: str) -> dict:
+        """Inspect one drug entry."""
+        entry = formulary.lookup(drug_key)
+        if entry is None:
+            raise HTTPException(status_code=404, detail=f"Drug '{drug_key}' not in formulary")
+        return {
+            "key": entry.key,
+            "display_en": entry.display_en,
+            "display_bn": entry.display_bn,
+            "category": entry.category,
+            "aliases": list(entry.aliases),
+            "adult_rule": entry.adult_rule.__dict__,
+            "pediatric_rule": (
+                entry.pediatric_rule.__dict__ if entry.pediatric_rule else None
+            ),
+            "notes_en": entry.notes_en,
+            "notes_bn": entry.notes_bn,
+        }
 
     # ----------------------------------------------------------------- vitals
     @app.post("/api/vitals")

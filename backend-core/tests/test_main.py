@@ -148,3 +148,179 @@ async def test_tts_empty_query():
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         r = await ac.get("/api/tts/stream?q=")
         assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Formulary module tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_formulary_list_endpoint_has_80_plus_drugs():
+    """GET /api/formulary returns the full drug list — at least 80 WHO/BD entries."""
+    backend_app = _load_app()
+    transport = ASGITransport(app=backend_app.create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.get("/api/formulary")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["count"] >= 80, f"Expected >= 80 drugs, got {data['count']}"
+        assert "drugs" in data and len(data["drugs"]) == data["count"]
+        assert "categories" in data and len(data["categories"]) >= 10
+        # Spot-check paracetamol present
+        keys = {d["key"] for d in data["drugs"]}
+        assert "paracetamol" in keys
+        assert "amoxicillin" in keys
+
+
+@pytest.mark.asyncio
+async def test_formulary_inspect_endpoint():
+    """GET /api/formulary/paracetamol returns full pediatric + adult rules."""
+    backend_app = _load_app()
+    transport = ASGITransport(app=backend_app.create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.get("/api/formulary/paracetamol")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["key"] == "paracetamol"
+        assert "Pediatric" in d["display_en"] or "Acetaminophen" in d["display_en"]
+        assert d["pediatric_rule"] is not None
+        assert d["pediatric_rule"]["mg_per_kg_per_dose"] == 15
+        assert d["adult_rule"]["fixed_mg_per_dose"] == 500
+
+
+@pytest.mark.asyncio
+async def test_formulary_inspect_404():
+    backend_app = _load_app()
+    transport = ASGITransport(app=backend_app.create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.get("/api/formulary/xyz_not_a_real_drug")
+        assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_dose_formulary_hit_paracetamol_pediatric():
+    """5yo, 18kg → 270 mg paracetamol from pediatric rule (15 mg/kg)."""
+    backend_app = _load_app()
+    transport = ASGITransport(app=backend_app.create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.post("/api/dose", json={
+            "medication": "Paracetamol",
+            "age": 5,
+            "weight": 18,
+            "lang": "en",
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["source"] == "formulary"
+        assert data["matched_drug_key"] == "paracetamol"
+        assert data["formulary_dose_mg"] == 270.0
+        assert data["formulary_age_rule_used"] == "pediatric"
+        assert data["is_dangerous"] is False
+
+
+@pytest.mark.asyncio
+async def test_dose_formulary_alias_resolution():
+    """Acetaminophen alias resolves to paracetamol."""
+    backend_app = _load_app()
+    transport = ASGITransport(app=backend_app.create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.post("/api/dose", json={
+            "medication": "Acetaminophen",
+            "age": 7,
+            "weight": 22,
+            "lang": "en",
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["source"] == "formulary"
+        assert data["matched_drug_key"] == "paracetamol"
+
+
+@pytest.mark.asyncio
+async def test_dose_formulary_age_guardrail():
+    """3yo given aspirin (min_age 12y) → is_dangerous=True."""
+    backend_app = _load_app()
+    transport = ASGITransport(app=backend_app.create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.post("/api/dose", json={
+            "medication": "Aspirin",
+            "age": 3,
+            "weight": 14,
+            "lang": "en",
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["source"] == "formulary"
+        assert data["is_dangerous"] is True
+        assert any("below the minimum age" in w for w in data["warnings"])
+
+
+@pytest.mark.asyncio
+async def test_dose_formulary_bangla_display():
+    """lang=bn returns Bangla display_name + warnings."""
+    backend_app = _load_app()
+    transport = ASGITransport(app=backend_app.create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.post("/api/dose", json={
+            "medication": "Paracetamol",
+            "age": 5,
+            "weight": 18,
+            "lang": "bn",
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["source"] == "formulary"
+        # display_name should contain Bangla characters
+        assert any(ord(c) > 0x0980 for c in data["display_name"]), data["display_name"]
+        # At least one warning in Bangla
+        assert any(any(ord(c) > 0x0980 for c in w) for w in data["warnings"])
+
+
+@pytest.mark.asyncio
+async def test_dose_formulary_miss_falls_back_to_llm(monkeypatch):
+    """Unknown drug triggers LLM fallback; result is stamped source='llm'."""
+    backend_app = _load_app()
+    async def _fake_llm(*args, **kwargs):
+        return {
+            "summary_en": "fake",
+            "summary_bn": "ভুয়া",
+            "dose_per_kg": "1mg/kg",
+            "total_dose": "10mg",
+            "frequency": "Once",
+            "route": "Oral",
+            "is_dangerous": False,
+            "warning_en": None,
+            "warning_bn": None,
+        }
+    monkeypatch.setattr(backend_app.llm_client, "call_llm", _fake_llm)
+    transport = ASGITransport(app=backend_app.create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r = await ac.post("/api/dose", json={
+            "medication": "Unobtainium-3000",
+            "age": 30,
+            "weight": 70,
+            "lang": "en",
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["source"] == "llm"
+        assert data["summary_en"] == "fake"
+
+
+@pytest.mark.asyncio
+async def test_formulary_lookup_helper():
+    """Unit test the formulary module lookup() directly."""
+    backend_app = _load_app()
+    f = backend_app.formulary
+    # Exact key
+    assert f.lookup("paracetamol").key == "paracetamol"
+    # Display name (case-insensitive)
+    assert f.lookup("PARACETAMOL").key == "paracetamol"
+    # Alias
+    assert f.lookup("Tylenol").key == "paracetamol"
+    # Substring
+    assert f.lookup("ibu").key == "ibuprofen"
+    # Bangla
+    assert f.lookup("প্যারাসিটামল").key == "paracetamol"
+    # Unknown
+    assert f.lookup("xyz_not_real") is None
