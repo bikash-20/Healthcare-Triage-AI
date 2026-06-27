@@ -64,6 +64,33 @@ async def test_health():
 
 
 @pytest.mark.asyncio
+async def test_audio_intake_accepts_audio_field(monkeypatch):
+    backend_app = _load_app()
+    main_mod = importlib.import_module("app.main")
+
+    class _FakeTranscriptions:
+        async def create(self, **_kwargs):
+            return type("T", (), {"text": "fever and cough"})()
+
+    class _FakeAudio:
+        transcriptions = _FakeTranscriptions()
+
+    class _FakeClient:
+        audio = _FakeAudio()
+
+    monkeypatch.setattr(main_mod, "_get_openai", lambda: _FakeClient())
+    transport = ASGITransport(app=backend_app.create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        files = {"audio": ("intake.webm", b"fake-bytes", "audio/webm")}
+        r = await ac.post("/api/audio/intake", files=files)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["raw_text"] == "fever and cough"
+        assert data["transcript"] == "fever and cough"
+        assert data["normalized_text"] == "fever and cough"
+
+
+@pytest.mark.asyncio
 async def test_ocr_parse(monkeypatch):
     async def fake_call(prompt, temperature=0.2, api_key=None, max_tokens=1000, **_kw):
         return {
@@ -139,6 +166,35 @@ async def test_chat_validation_error():
         # Empty messages
         r = await ac.post("/api/chat", json={"messages": []})
         assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_chat_context_passthrough(monkeypatch):
+    captured = {}
+
+    async def fake_call(*, messages, response_mode="json", **_kw):
+        captured["messages"] = messages
+        captured["response_mode"] = response_mode
+        return {"reply": "ok"}
+
+    backend_app = _load_app()
+    monkeypatch.setattr(backend_app.llm_client, "call_llm", fake_call)
+    transport = ASGITransport(app=backend_app.create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        payload = {
+            "messages": [{"role": "user", "content": "What should I do?"}],
+            "context": {
+                "vitals": {"bp": "110/70", "hr": 78},
+                "triage": {"triage_severity": "Yellow", "clinical_reasoning": "Monitor closely"},
+            },
+            "lang": "en",
+        }
+        r = await ac.post("/api/chat", json=payload)
+        assert r.status_code == 200, r.text
+        assert captured["response_mode"] == "raw"
+        system_prompt = captured["messages"][0]["content"]
+        assert "Blood Pressure: 110/70" in system_prompt
+        assert "Current triage severity: Yellow" in system_prompt
 
 
 @pytest.mark.asyncio

@@ -18,19 +18,37 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ELEVENLABS_KEYS = [
-    k.strip()
-    for k in os.getenv("ELEVENLABS_KEYS", "").split(",")
-    if k.strip()
-]
-OPENAI_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
-EDGE_ROUTER_URL = os.getenv("EDGE_ROUTER_URL", "").rstrip("/")
-USE_CF_WORKER_TTS = os.getenv("USE_CF_WORKER_TTS", "1").lower() in ("1", "true", "yes")
-OPENAI_TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")
-ELEVENLABS_VOICE_ID = os.getenv(
-    "ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM"
-)
+
+def _env(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip()
+
+
+def _elevenlabs_keys() -> list[str]:
+    return [k.strip() for k in _env("ELEVENLABS_KEYS").split(",") if k.strip()]
+
+
+def _openai_key() -> str:
+    return _env("OPENAI_API_KEY")
+
+
+def _openai_tts_model() -> str:
+    return _env("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+
+
+def _edge_router_url() -> str:
+    return _env("EDGE_ROUTER_URL").rstrip("/")
+
+
+def _use_cf_worker_tts() -> bool:
+    return _env("USE_CF_WORKER_TTS", "1").lower() in ("1", "true", "yes")
+
+
+def _openai_tts_voice() -> str:
+    return _env("OPENAI_TTS_VOICE", "alloy")
+
+
+def _elevenlabs_voice_id() -> str:
+    return _env("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
 
 
 def _is_bengali(text: str) -> bool:
@@ -40,9 +58,10 @@ def _is_bengali(text: str) -> bool:
 
 
 async def stream_worker_tts(text: str, lang: str = "en"):
-    if not EDGE_ROUTER_URL:
+    edge_router_url = _edge_router_url()
+    if not edge_router_url:
         raise RuntimeError("EDGE_ROUTER_URL not configured for worker TTS")
-    url = f"{EDGE_ROUTER_URL}/tts"
+    url = f"{edge_router_url}/tts"
     payload = {"text": text, "lang": lang}
     async with httpx.AsyncClient(timeout=None) as client:
         async with client.stream(
@@ -59,17 +78,18 @@ async def stream_worker_tts(text: str, lang: str = "en"):
 
 
 async def stream_openai_tts(text: str, lang: str = "en"):
-    if not OPENAI_KEY:
+    openai_key = _openai_key()
+    if not openai_key:
         raise RuntimeError("OPENAI_API_KEY not configured for OpenAI TTS")
     # Bengali gets a voice with strong multilingual coverage.
-    voice = "shimmer" if lang == "bn" or _is_bengali(text) else OPENAI_TTS_VOICE
+    voice = "shimmer" if lang == "bn" or _is_bengali(text) else _openai_tts_voice()
     url = "https://api.openai.com/v1/audio/speech"
     headers = {
-        "Authorization": f"Bearer {OPENAI_KEY}",
+        "Authorization": f"Bearer {openai_key}",
         "Content-Type": "application/json",
         "Accept": "audio/mpeg",
     }
-    body = {"model": OPENAI_TTS_MODEL, "voice": voice, "input": text}
+    body = {"model": _openai_tts_model(), "voice": voice, "input": text}
     async with httpx.AsyncClient(timeout=None) as client:
         async with client.stream("POST", url, headers=headers, json=body) as resp:
             if resp.status_code >= 400:
@@ -82,9 +102,10 @@ async def stream_openai_tts(text: str, lang: str = "en"):
                 yield chunk
 
 
-async def stream_elevenlabs_tts(text: str, voice_id: str = ELEVENLABS_VOICE_ID):
+async def stream_elevenlabs_tts(text: str, voice_id: str | None = None):
     last_exc: Exception | None = None
-    for key in ELEVENLABS_KEYS:
+    voice_id = voice_id or _elevenlabs_voice_id()
+    for key in _elevenlabs_keys():
         try:
             headers = {"xi-api-key": key, "Accept": "audio/mpeg"}
             url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
@@ -109,7 +130,7 @@ async def stream_elevenlabs_tts(text: str, voice_id: str = ELEVENLABS_VOICE_ID):
     raise last_exc or RuntimeError("No ElevenLabs keys available")
 
 
-async def stream_tts(text: str, voice_id: str = ELEVENLABS_VOICE_ID, lang: str = "en"):
+async def stream_tts(text: str, voice_id: str | None = None, lang: str = "en"):
     """Pick the best provider for ``text`` + ``lang``.
 
     Bengali / mixed-script text skips English-only providers and goes straight
@@ -117,8 +138,9 @@ async def stream_tts(text: str, voice_id: str = ELEVENLABS_VOICE_ID, lang: str =
     """
     last_exc: Exception | None = None
     contains_bengali = lang == "bn" or _is_bengali(text)
+    voice_id = voice_id or _elevenlabs_voice_id()
 
-    if not contains_bengali and USE_CF_WORKER_TTS and EDGE_ROUTER_URL:
+    if not contains_bengali and _use_cf_worker_tts() and _edge_router_url():
         try:
             async for chunk in stream_worker_tts(text, lang="en"):
                 yield chunk
@@ -126,7 +148,7 @@ async def stream_tts(text: str, voice_id: str = ELEVENLABS_VOICE_ID, lang: str =
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
 
-    if not contains_bengali and ELEVENLABS_KEYS:
+    if not contains_bengali and _elevenlabs_keys():
         try:
             async for chunk in stream_elevenlabs_tts(text, voice_id):
                 yield chunk
@@ -134,7 +156,7 @@ async def stream_tts(text: str, voice_id: str = ELEVENLABS_VOICE_ID, lang: str =
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
 
-    if OPENAI_KEY:
+    if _openai_key():
         try:
             async for chunk in stream_openai_tts(text, lang=lang):
                 yield chunk

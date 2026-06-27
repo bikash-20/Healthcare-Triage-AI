@@ -31,12 +31,13 @@ import httpx
 
 logger = logging.getLogger("llm_client")
 
-EDGE_ROUTER_URL = os.getenv("EDGE_ROUTER_URL", "").rstrip("/")
-
-
 def _env(name: str) -> str:
     """Read an env var fresh each call so runtime changes take effect."""
     return os.getenv(name, "").strip()
+
+
+def _edge_router_url() -> str:
+    return _env("EDGE_ROUTER_URL").rstrip("/")
 
 
 def _openai_key() -> str: return _env("OPENAI_API_KEY")
@@ -51,7 +52,7 @@ GEMINI_KEY = _gemini_key()
 GROQ_KEY = _groq_key()
 
 # Premium model overrides — sensible defaults per provider.
-_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "[redacted]o-mini")
+_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 _ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
 _GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 _GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
@@ -101,7 +102,7 @@ def current_provider() -> dict[str, Any]:
             "provider": premium["provider"],
             "model": premium["model"],
             "via": "direct",
-            "edge_router_configured": bool(EDGE_ROUTER_URL),
+            "edge_router_configured": bool(_edge_router_url()),
             "fallback_chain": ["edge_router_free", "local_stub"],
         }
     return {
@@ -109,7 +110,7 @@ def current_provider() -> dict[str, Any]:
         "provider": "edge_router",
         "model": "cf-llama",
         "via": "cloudflare_worker",
-        "edge_router_configured": bool(EDGE_ROUTER_URL),
+        "edge_router_configured": bool(_edge_router_url()),
         "fallback_chain": ["openrouter_free", "local_stub"],
     }
 
@@ -351,7 +352,8 @@ async def call_edge_router(
 
     Kept for backward compatibility — :func:`call_llm` uses this internally.
     """
-    if not EDGE_ROUTER_URL:
+    edge_router_url = _edge_router_url()
+    if not edge_router_url:
         raise RuntimeError("EDGE_ROUTER_URL not configured")
     if not messages and not prompt:
         raise ValueError("Either prompt or messages must be provided")
@@ -378,7 +380,7 @@ async def call_edge_router(
     for attempt in range(MAX_RETRIES + 1):
         try:
             async with httpx.AsyncClient(timeout=EDGE_TIMEOUT_SECONDS) as client:
-                resp = await client.post(f"{EDGE_ROUTER_URL}/", json=payload, headers=headers)
+                resp = await client.post(f"{edge_router_url}/", json=payload, headers=headers)
                 text = resp.text
                 if resp.status_code >= 400:
                     logger.error("Edge router error %s (attempt %d): %s", resp.status_code, attempt + 1, text[:300])

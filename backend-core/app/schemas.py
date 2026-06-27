@@ -106,6 +106,7 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage] = Field(..., min_length=1)
     vitals: Optional[dict] = None
     triage: Optional[dict] = None
+    context: Optional[dict] = None
     model: Optional[str] = None
     api_key: Optional[str] = None
     lang: Optional[Literal["en", "bn"]] = "en"
@@ -115,7 +116,9 @@ class ChatRequest(BaseModel):
 # Audio intake response
 # ---------------------------------------------------------------------------
 class AudioIntakeResponse(BaseModel):
+    transcript: str
     raw_text: str
     normalized: str
+    normalized_text: Optional[str] = None
     lang: str
     detected_language: str

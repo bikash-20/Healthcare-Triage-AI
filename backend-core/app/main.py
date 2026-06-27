@@ -46,9 +46,6 @@ from .translations import detect_language, t
 
 load_dotenv()
 
-OPENAI_KEY = os.getenv("OPENAI_API_KEY", "")
-EDGE_ROUTER_URL = os.getenv("EDGE_ROUTER_URL", "")
-
 logger = logging.getLogger("backend")
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -56,6 +53,15 @@ logging.basicConfig(
 )
 
 _openai_client: AsyncOpenAI | None = None
+_openai_client_key: str | None = None
+
+
+def _openai_key() -> str:
+    return os.getenv("OPENAI_API_KEY", "").strip()
+
+
+def _edge_router_url() -> str:
+    return os.getenv("EDGE_ROUTER_URL", "").strip()
 
 # Log provider tier once at import time — visible in Render deploy logs.
 _tier_info = _current_provider()
@@ -70,11 +76,15 @@ logger.info(
 
 def _get_openai() -> AsyncOpenAI | None:
     """Return a cached AsyncOpenAI client, or None when no key is configured."""
-    global _openai_client
-    if not OPENAI_KEY:
+    global _openai_client, _openai_client_key
+    key = _openai_key()
+    if not key:
+        _openai_client = None
+        _openai_client_key = None
         return None
-    if _openai_client is None:
-        _openai_client = AsyncOpenAI(api_key=OPENAI_KEY)
+    if _openai_client is None or _openai_client_key != key:
+        _openai_client = AsyncOpenAI(api_key=key)
+        _openai_client_key = key
     return _openai_client
 
 
@@ -138,8 +148,8 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "service": "rural-health-triage-backend",
-            "edge_router_configured": bool(EDGE_ROUTER_URL),
-            "openai_configured": bool(OPENAI_KEY),
+            "edge_router_configured": bool(_edge_router_url()),
+            "openai_configured": bool(_openai_key()),
             "supported_languages": ["en", "bn"],
             "provider": _current_provider(),
         }
@@ -165,8 +175,15 @@ def create_app() -> FastAPI:
 
     # ----------------------------------------------------------------- audio
     @app.post("/api/audio/intake", response_model=AudioIntakeResponse)
-    async def audio_intake(file: UploadFile = File(...)) -> AudioIntakeResponse | JSONResponse:
-        path, _content = await _save_upload(file)
+    async def audio_intake(
+        file: UploadFile | None = File(None),
+        audio: UploadFile | None = File(None),
+    ) -> AudioIntakeResponse | JSONResponse:
+        upload = file or audio
+        if upload is None:
+            raise HTTPException(status_code=400, detail="audio file is required")
+
+        path, _content = await _save_upload(upload)
 
         try:
             client = _get_openai()
@@ -205,8 +222,10 @@ def create_app() -> FastAPI:
                 logger.warning("Google Translate unavailable: %s — using raw text", exc)
 
         return AudioIntakeResponse(
+            transcript=text,
             raw_text=text,
             normalized=normalized,
+            normalized_text=normalized,
             lang=lang,
             detected_language=lang,
         )
@@ -418,8 +437,9 @@ def create_app() -> FastAPI:
         if not payload.messages:
             raise HTTPException(status_code=400, detail="messages list is required")
 
-        vitals_context = payload.vitals or {}
-        triage_context = payload.triage or {}
+        context = payload.context or {}
+        vitals_context = payload.vitals or context.get("vitals", {}) or {}
+        triage_context = payload.triage or context.get("triage", {}) or {}
         last_user = next(
             (m.content for m in reversed(payload.messages) if m.role == "user"),
             "",
@@ -466,6 +486,13 @@ def create_app() -> FastAPI:
             model=model,
             lang=lang,
         )
+        if isinstance(text, dict):
+            text = (
+                text.get("assistant")
+                or text.get("reply")
+                or text.get("content")
+                or str(text)
+            )
         return {
             "assistant": text,
             "language": detect_language(text),
