@@ -7,8 +7,8 @@ services:
     region: singapore
     branch: main
     healthCheckPath: /api/health
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install --upgrade pip && pip install -r backend-core/requirements.txt
+    startCommand: cd backend-core && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
